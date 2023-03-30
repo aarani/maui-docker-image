@@ -1,0 +1,44 @@
+name: Docker Image CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  IMAGE_NAME: maui-build-tool
+
+jobs:
+  build:
+    runs-on: windows-2022
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: Build the Docker image
+      run: |
+        $FileHash = (Get-FileHash "install_build_tools.ps1" -Algorithm MD5).Hash
+        $IMAGE_ID = "ghcr.io/${{ github.repository_owner }}/${env:IMAGE_NAME}"
+        docker build . --file Dockerfile --tag ${IMAGE_ID}:$FileHash --tag ${IMAGE_ID}:latest
+
+    - name: Log in to registry
+      if: ${{ github.ref == 'refs/heads/main' }}
+      run: docker login ghcr.io -u ${{ github.actor }} -p ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Push image
+      if: ${{ github.ref == 'refs/heads/main' }}
+      run: |
+        $IMAGE_ID = "ghcr.io/${{ github.repository_owner }}/${env:IMAGE_NAME}"
+        $VERSION = (Get-FileHash "install_build_tools.ps1" -Algorithm MD5).Hash
+        $RESULT = docker manifest inspect ${IMAGE_ID}:${VERSION}
+        if ($RESULT.ExitCode -ne 0)
+          {
+            docker push ${IMAGE_ID}:${VERSION}
+            docker push ${IMAGE_ID}:latest
+          }
+        exit 0
+
